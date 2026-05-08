@@ -77,62 +77,9 @@ Generated files are saved to `Android/data/com.example.googleAttractionsGpx/file
 
 ## Architecture
 
-```
-presentation/        — Compose UI
-  MainActivity.kt          — main screen with coordinate input and POI generation
-  SettingsScreen.kt         — API keys and source configuration
-  MapPickerSheet.kt         — bottom-sheet map for picking coordinates
-  TrackCorridorScreen.kt    — Track Corridor workflow (OsmAnd integration)
-  theme/                    — Material 3 theme (Color, Theme, Type)
+See [docs/architecture.md](docs/architecture.md) for the full project structure.
 
-domain/
-  models/                   — PointData, Coordinates
-  repository/               — SettingsRepository interface
-
-data/repository/     — implementations
-  SettingsRepositoryImpl.kt          — SharedPreferences-backed settings
-  AllAttractionsGenerator.kt         — orchestrates all POI sources
-  GooglePlaceGpxGenerator.kt         — Google Places API
-  OsmPlaceGpxGenerator.kt            — OpenStreetMap / Overpass
-  TripAdvisorGpxGenerator.kt         — TripAdvisor Content API
-  WikidataAttractionsGpxGenerator.kt — Wikidata SPARQL
-  WikipediaArticlesGpxGenerator.kt   — Wikipedia geo-search
-  INaturalistGpxGenerator.kt         — iNaturalist species
-  NeedPhotoWikidataGpxGenerator.kt   — Wikidata objects without photos
-  NeedPhotoSettings.kt               — exclusion categories for photo routes
-  GpxGeneratorBase.kt                — shared GPX-writing logic
-  IGpxGenerator.kt                   — generator interface
-  NominatimService.kt                — reverse geocoding
-  OsmAndConnection.kt                — AIDL binding to OsmAnd
-  GpxTrackParser.kt                  — SAX-based GPX track parser
-  CorridorCalculator.kt              — haversine distance, sub-segment extraction, bounding box
-  TrackCacheRepository.kt            — track-name → file-URI cache
-```
-
-### Track Corridor workflow
-
-```mermaid
-flowchart TD
-    A[Open Track Corridor screen] --> B{OsmAnd installed?}
-    B -- No --> B1[Show 'Install OsmAnd' message]
-    B -- Yes --> C[Bind to OsmAnd via AIDL]
-    C --> D[Fetch active & imported tracks]
-    D --> E{Tracks found?}
-    E -- No --> E1[Show 'No tracks found']
-    E -- Yes --> F[User selects a track]
-    F --> G{GPX file cached?}
-    G -- Yes --> H[Load GPX from cached URI]
-    G -- No --> I[User picks GPX file]
-    I --> H
-    H --> J[User enters start/end km + corridor width m]
-    J --> K[Extract track sub-segment]
-    K --> L[Compute corridor bounding box]
-    L --> M[Run POI discovery with enabled sources]
-    M --> N[Generate result GPX]
-    N --> O{User choice}
-    O --> P[Send to OsmAnd via AIDL]
-    O --> Q[Share via Android chooser]
-```
+See [docs/track-corridor-workflow.md](docs/track-corridor-workflow.md) for the Track Corridor workflow diagram.
 
 ## Build
 
