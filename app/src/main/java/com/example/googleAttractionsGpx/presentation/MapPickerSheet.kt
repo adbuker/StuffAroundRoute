@@ -38,6 +38,7 @@ fun MapPickerSheet(
     open: Boolean,
     initialLat: Double,
     initialLng: Double,
+    centerOnCurrentLocationOnOpen: Boolean = false,
     onClose: () -> Unit,
     onConfirm: (lat: Double, lng: Double) -> Unit
 ) {
@@ -51,6 +52,29 @@ fun MapPickerSheet(
     val mapViewState = remember { mutableStateOf<MapView?>(null) }
 
     if (!open) return
+
+    fun moveToCurrentLocation() {
+        if (ActivityCompat.checkSelfPermission(
+                context, Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            val fusedLocationClient =
+                LocationServices.getFusedLocationProviderClient(context)
+            fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
+                location?.let {
+                    centerLat = it.latitude
+                    centerLng = it.longitude
+                    mapViewState.value?.controller?.animateTo(GeoPoint(it.latitude, it.longitude))
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(open, centerOnCurrentLocationOnOpen, mapViewState.value) {
+        if (open && centerOnCurrentLocationOnOpen && mapViewState.value != null) {
+            moveToCurrentLocation()
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onClose,
@@ -178,23 +202,7 @@ fun MapPickerSheet(
 
                 // Current location mini FAB (bottom-right)
                 SmallFloatingActionButton(
-                    onClick = {
-                        if (ActivityCompat.checkSelfPermission(
-                                context, Manifest.permission.ACCESS_FINE_LOCATION
-                            ) == PackageManager.PERMISSION_GRANTED
-                        ) {
-                            val fusedLocationClient =
-                                LocationServices.getFusedLocationProviderClient(context)
-                            fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
-                                location?.let {
-                                    centerLat = it.latitude
-                                    centerLng = it.longitude
-                                    val map = mapViewState.value
-                                    map?.controller?.animateTo(GeoPoint(it.latitude, it.longitude))
-                                }
-                            }
-                        }
-                    },
+                    onClick = { moveToCurrentLocation() },
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(12.dp),

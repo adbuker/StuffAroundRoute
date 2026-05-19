@@ -317,14 +317,19 @@ fun GpxGeneratorScreen(onNavigateToSettings: () -> Unit = {}) {
 
     // Map picker
     val latLng = remember(coordinatesText) {
-        try { val c = Coordinates.fromString(coordinatesText); Pair(c.latitude, c.longitude) }
-        catch (e: Exception) { Pair(44.4268, 26.1025) }
+        try {
+            val c = Coordinates.fromString(coordinatesText)
+            Pair(c.latitude, c.longitude)
+        } catch (e: Exception) {
+            null
+        }
     }
     if (showMapPicker) {
         MapPickerSheet(
             open = true,
-            initialLat = latLng.first,
-            initialLng = latLng.second,
+            initialLat = latLng?.first ?: 44.4268,
+            initialLng = latLng?.second ?: 26.1025,
+            centerOnCurrentLocationOnOpen = latLng == null,
             onClose = { showMapPicker = false },
             onConfirm = { lat, lng -> coordinatesText = "$lat, $lng"; showMapPicker = false }
         )
