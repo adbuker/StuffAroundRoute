@@ -13,13 +13,13 @@ import org.json.JSONObject
 class WikipediaArticlesGpxGenerator : GpxGeneratorBase() {
     
     private val systemLanguage = Locale.getDefault().language
-    private val nominatimService = NominatimService()
+    private val wikidataWikipediaService = WikidataWikipediaService(systemLanguage)
     
     override fun getData(coordinates: Coordinates, radiusMeters: Int): List<PointData> {
         val pointDataList = mutableListOf<PointData>()
         
         try {
-            val countryLanguages = getCountryLanguagesFromCoordinates(coordinates)
+            val countryLanguages = wikidataWikipediaService.getCountryLanguages(coordinates)
             val wikidataResults = queryWikidataPlaces(coordinates, radiusMeters / 1000.0)
             // Convert Wikidata results to PointData
             pointDataList.addAll(convertWikidataToPointData(wikidataResults, countryLanguages))
@@ -29,16 +29,15 @@ class WikipediaArticlesGpxGenerator : GpxGeneratorBase() {
         
         return pointDataList
     }
-
-    private fun getCountryLanguagesFromCoordinates(coordinates: Coordinates): List<String> {
-        return nominatimService.getCountryLanguages(coordinates)
-    }
     
     private fun convertWikidataToPointData(wikidataPlaces: List<WikidataPlace>, countryLanguages: List<String>): List<PointData> {
         return wikidataPlaces.map { place ->
             // Create description with Wikipedia links
             val description = if (place.wikipediaLinks.isNotEmpty()) {
-                val formattedLinks = formatWikipediaLinks(place.wikipediaLinks, countryLanguages)
+                val formattedLinks = wikidataWikipediaService.formatWikipediaLinks(
+                    place.wikipediaLinks,
+                    countryLanguages
+                )
                 "Instance of:\n${place.instanceOf}; " +
                 "\n\nWikipedia articles:\n${formattedLinks}"
             } else {
@@ -51,33 +50,6 @@ class WikipediaArticlesGpxGenerator : GpxGeneratorBase() {
                 description = description
             )
         }
-    }
-    
-    private fun formatWikipediaLinks(wikipediaLinks: String, countryLanguages: List<String>): String {
-        if (wikipediaLinks.isEmpty()) return ""
-        
-        // Parse individual Wikipedia links from comma-separated string
-        val links = wikipediaLinks.split(", ").map { it.trim() }.filter { it.isNotEmpty() }
-        
-        // Sort links to prioritize system language first, then country languages
-        val sortedLinks = links.sortedWith { link1, link2 ->
-            val isSystemLang1 = link1.contains("${systemLanguage}.wikipedia.org")
-            val isSystemLang2 = link2.contains("${systemLanguage}.wikipedia.org")
-            
-            val isCountryLang1 = countryLanguages.any { link1.contains("${it}.wikipedia.org") }
-            val isCountryLang2 = countryLanguages.any { link2.contains("${it}.wikipedia.org") }
-            
-            when {
-                isSystemLang1 && !isSystemLang2 -> -1  // link1 is system language, comes first
-                !isSystemLang1 && isSystemLang2 -> 1   // link2 is system language, comes first
-                isCountryLang1 && !isCountryLang2 -> -1 // link1 is country language
-                !isCountryLang1 && isCountryLang2 -> 1  // link2 is country language
-                else -> 0  // keep original order for other links
-            }
-        }
-        
-        // Join links with empty lines between them
-        return sortedLinks.joinToString("\n\n")
     }
     
     private fun queryWikidataPlaces(coordinates: Coordinates, radiusKm: Double): List<WikidataPlace> {

@@ -9,11 +9,12 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.time.LocalDate
-import java.time.MonthDay
 import java.time.OffsetDateTime
 import java.util.Locale
 
 class INaturalistGpxGenerator(private val username: String, private val context: Context) : GpxGeneratorBase() {
+
+    private val wikidataWikipediaService = WikidataWikipediaService()
 
     private data class Observation(
         val taxonId: Int,
@@ -56,16 +57,28 @@ class INaturalistGpxGenerator(private val username: String, private val context:
         val speciesName = topObservations.first().let {
             it.commonName.ifEmpty { it.scientificName }
         }
+        val scientificName = topObservations.first().scientificName
         val timeDesc = buildTimeDescription(topObservations)
+        val wikipediaLinks = wikidataWikipediaService.getFormattedWikipediaLinksForScientificName(
+            scientificName,
+            coordinates
+        )
 
         return topObservations.map { obs ->
             PointData(
                 coordinates = Coordinates(obs.latitude, obs.longitude),
                 name = speciesName,
-                description = "Observed: ${obs.observedOn}\nhttps://www.inaturalist.org/observations/${obs.id}\n${context.getString(R.string.inat_time_label)} $timeDesc"
+                description = buildDescription(
+                    observedOn = obs.observedOn,
+                    observationId = obs.id,
+                    timeDescription = timeDesc,
+                    timeLabel = context.getString(R.string.inat_time_label),
+                    wikipediaLinks = wikipediaLinks
+                )
             )
         }
     }
+
 
     private fun getObservationHour(timeObservedAt: String?): Int? {
         if (timeObservedAt.isNullOrBlank()) return null
@@ -213,5 +226,25 @@ class INaturalistGpxGenerator(private val username: String, private val context:
 
         val response = connection.inputStream.bufferedReader().use { it.readText() }
         return JSONObject(response)
+    }
+
+    companion object {
+        internal fun buildDescription(
+            observedOn: String,
+            observationId: Long,
+            timeDescription: String,
+            timeLabel: String,
+            wikipediaLinks: String
+        ): String {
+            val baseDescription = "Observed: $observedOn\n" +
+                "https://www.inaturalist.org/observations/$observationId\n" +
+                "$timeLabel $timeDescription"
+
+            return if (wikipediaLinks.isBlank()) {
+                baseDescription
+            } else {
+                "$baseDescription\n\nWikipedia articles:\n$wikipediaLinks"
+            }
+        }
     }
 }
