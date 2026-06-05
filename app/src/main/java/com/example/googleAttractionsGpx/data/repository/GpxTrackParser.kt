@@ -11,6 +11,9 @@ object GpxTrackParser {
     fun parseTrackPoints(input: InputStream): List<Coordinates> {
         val points = mutableListOf<Coordinates>()
         val factory = SAXParserFactory.newInstance()
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+        factory.setFeature("http://xml.org/sax/features/external-general-entities", false)
+        factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
         val parser = factory.newSAXParser()
         parser.parse(input, object : DefaultHandler() {
             override fun startElement(uri: String?, localName: String?, qName: String?, attributes: Attributes?) {
