@@ -53,6 +53,10 @@ fun TrackCorridorScreen(onNavigateBack: () -> Unit) {
     var generatedFile by remember { mutableStateOf<File?>(null) }
     var needsFilePick by remember { mutableStateOf(false) }
 
+    DisposableEffect(osmAnd) {
+        onDispose { osmAnd.unbind() }
+    }
+
     val filePickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
