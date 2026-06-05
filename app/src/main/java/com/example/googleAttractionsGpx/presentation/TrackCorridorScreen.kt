@@ -139,6 +139,7 @@ fun TrackCorridorScreen(onNavigateBack: () -> Unit) {
         if (start == null || end == null || width == null) {
             statusText = "Please enter valid numbers for all fields"; return
         }
+        if (start < 0 || end < 0) { statusText = "Start and end distances must be non-negative"; return }
         if (start >= end) { statusText = "Start distance must be less than end distance"; return }
         if (end > totalLengthKm) {
             statusText = "End distance exceeds track length (${"%.1f".format(totalLengthKm)} km)"; return
