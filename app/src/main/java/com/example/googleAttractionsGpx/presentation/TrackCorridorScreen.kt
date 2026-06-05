@@ -192,7 +192,7 @@ fun TrackCorridorScreen(onNavigateBack: () -> Unit) {
                 val gpxContent = if (includeTrack) {
                     buildCorridorGpxContent(allPoints, segment)
                 } else {
-                    buildGpxContent(allPoints)
+                    buildCorridorGpxContent(allPoints, emptyList())
                 }
 
                 val fileName = "corridor_${selectedTrack}_${"%.0f".format(start)}-${"%.0f".format(end)}km.gpx"
