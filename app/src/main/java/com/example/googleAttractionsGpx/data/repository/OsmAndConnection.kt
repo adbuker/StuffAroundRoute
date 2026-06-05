@@ -22,17 +22,7 @@ class OsmAndConnection(private val context: Context) {
 
     private var osmAndInterface: IOsmAndAidlInterface? = null
     private var boundPackage: String? = null
-
-    private val serviceConnection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            osmAndInterface = IOsmAndAidlInterface.Stub.asInterface(service)
-        }
-
-        override fun onServiceDisconnected(name: ComponentName?) {
-            osmAndInterface = null
-            boundPackage = null
-        }
-    }
+    private var serviceConnection: ServiceConnection? = null
 
     fun isOsmAndInstalled(): Boolean {
         val pkg = getOsmAndPackage()
@@ -51,7 +41,7 @@ class OsmAndConnection(private val context: Context) {
         val intent = Intent("net.osmand.aidl.OsmandAidlServiceV2")
         intent.setPackage(pkg)
         Log.d(TAG, "bind: binding to action=net.osmand.aidl.OsmandAidlServiceV2 package=$pkg")
-        val bound = context.bindService(intent, object : ServiceConnection {
+        val conn = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
                 Log.d(TAG, "onServiceConnected: name=$name")
                 osmAndInterface = IOsmAndAidlInterface.Stub.asInterface(service)
@@ -64,7 +54,9 @@ class OsmAndConnection(private val context: Context) {
                 osmAndInterface = null
                 boundPackage = null
             }
-        }, Context.BIND_AUTO_CREATE)
+        }
+        serviceConnection = conn
+        val bound = context.bindService(intent, conn, Context.BIND_AUTO_CREATE)
         Log.d(TAG, "bind: bindService returned $bound")
         if (!bound) {
             Log.w(TAG, "bind: bindService failed")
@@ -127,8 +119,9 @@ class OsmAndConnection(private val context: Context) {
 
     fun unbind() {
         try {
-            context.unbindService(serviceConnection)
+            serviceConnection?.let { context.unbindService(it) }
         } catch (_: Exception) {}
+        serviceConnection = null
         osmAndInterface = null
         boundPackage = null
     }
