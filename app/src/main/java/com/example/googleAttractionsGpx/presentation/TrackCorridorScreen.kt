@@ -226,11 +226,12 @@ fun TrackCorridorScreen(onNavigateBack: () -> Unit) {
     fun shareFile() {
         val file = generatedFile ?: return
         val uri = FileProvider.getUriForFile(context, "com.example.googleAttractionsGpx.fileProvider", file)
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "application/octet-stream")
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/gpx+xml"
+            putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(intent, "Open GPX"))
+        context.startActivity(Intent.createChooser(intent, "Share GPX"))
     }
 
     Scaffold(
