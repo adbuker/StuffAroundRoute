@@ -1,5 +1,7 @@
 package net.osmand.aidlapi;
 
+import android.os.Bundle;
+import android.os.IBinder;
 import net.osmand.aidlapi.gpx.ASelectedGpxFile;
 import net.osmand.aidlapi.gpx.AGpxFile;
 import net.osmand.aidlapi.gpx.ImportGpxParams;
