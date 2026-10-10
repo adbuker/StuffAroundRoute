@@ -6,4 +6,5 @@ import com.example.googleAttractionsGpx.domain.models.PointData
 interface IGpxGenerator {
     fun getData(coordinates: Coordinates, radiusMeters: Int = 3000): List<PointData>
     fun generateGpx(pointDataList: List<PointData>): String
+    fun getTrackDescription(): String? = null
 }

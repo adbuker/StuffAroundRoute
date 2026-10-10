@@ -214,24 +214,25 @@ fun GpxGeneratorScreen(onNavigateToSettings: () -> Unit = {}) {
                 val deferreds = sources.map { id ->
                     async(Dispatchers.IO) {
                         val gen = buildGenerator(id, settingsRepository)
-                        if (gen == null) Pair(id, emptyList<PointData>())
+                        if (gen == null) Triple(id, emptyList<PointData>(), null)
                         else try {
-                            Pair(id, gen.getData(centerCoordinates))
+                            val points = gen.getData(centerCoordinates)
+                            Triple(id, points, gen.getTrackDescription())
                         } catch (e: Exception) {
                             synchronized(errors) { errors.add("$id: ${e.message}") }
-                            Pair(id, emptyList<PointData>())
+                            Triple(id, emptyList<PointData>(), null)
                         }
                     }
                 }
                 val results = deferreds.map { it.await() }
-                results.forEach { (id, pts) ->
+                results.forEach { (id, pts, _) ->
                     val color = sourceColors[id]
                     allPoints.addAll(pts.map { it.copy(color = color) })
                 }
 
                 if (allPoints.isEmpty()) {
                     withContext(Dispatchers.Main) {
-                        val stats = results.joinToString(", ") { (id, pts) -> "$id: ${pts.size}" }
+                        val stats = results.joinToString(", ") { (id, pts, _) -> "$id: ${pts.size}" }
                         val errStr = if (errors.isNotEmpty()) "\nErrors: ${errors.joinToString("; ")}" else ""
                         statusText = "No points found. GPX was not generated. $stats$errStr"
                         isGenerating = false
@@ -239,7 +240,8 @@ fun GpxGeneratorScreen(onNavigateToSettings: () -> Unit = {}) {
                     return@launch
                 }
 
-                val gpxString = buildGpxContent(allPoints)
+                val trackDescription = results.mapNotNull { it.third }.joinToString("\n\n")
+                val gpxString = buildGpxContent(allPoints, trackDescription.ifBlank { null })
                 val fileName = withContext(Dispatchers.IO) { getFileName(coords, sources.joinToString("-")) }
                 val file = File(context.getExternalFilesDir(null), fileName)
                 withContext(Dispatchers.IO) { file.writeText(gpxString, Charset.defaultCharset()) }
@@ -252,7 +254,7 @@ fun GpxGeneratorScreen(onNavigateToSettings: () -> Unit = {}) {
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
                 withContext(Dispatchers.Main) {
-                    val stats = results.joinToString(", ") { (id, pts) -> "$id: ${pts.size}" }
+                    val stats = results.joinToString(", ") { (id, pts, _) -> "$id: ${pts.size}" }
                     val errStr = if (errors.isNotEmpty()) "\nErrors: ${errors.joinToString("; ")}" else ""
                     statusText = "Done! $stats (total: ${allPoints.size} points)$errStr"
                     isGenerating = false
