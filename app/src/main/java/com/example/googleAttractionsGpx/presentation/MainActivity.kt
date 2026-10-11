@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -43,6 +44,7 @@ import androidx.core.content.FileProvider
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.googleAttractionsGpx.R
 import com.example.googleAttractionsGpx.data.repository.*
 import com.example.googleAttractionsGpx.domain.models.Coordinates
 import com.example.googleAttractionsGpx.domain.models.PointData
@@ -247,7 +249,7 @@ fun GpxGeneratorScreen(onNavigateToSettings: () -> Unit = {}) {
                 withContext(Dispatchers.IO) { file.writeText(gpxString, Charset.defaultCharset()) }
 
                 val uri: Uri = FileProvider.getUriForFile(
-                    context, "com.example.googleAttractionsGpx.fileProvider", file
+                    context, "${context.packageName}.fileProvider", file
                 )
                 val intent = Intent(Intent.ACTION_VIEW).apply {
                     setDataAndType(uri, "application/octet-stream")
@@ -271,7 +273,7 @@ fun GpxGeneratorScreen(onNavigateToSettings: () -> Unit = {}) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Stuff around") },
+                title = { Text(stringResource(R.string.app_name)) },
                 actions = {
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Filled.Settings, contentDescription = "Settings")
