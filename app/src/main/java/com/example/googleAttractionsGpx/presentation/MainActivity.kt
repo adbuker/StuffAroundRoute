@@ -33,7 +33,13 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -149,6 +155,7 @@ fun GpxGeneratorScreen(onNavigateToSettings: () -> Unit = {}) {
     var selectedSources by remember { mutableStateOf(settingsRepository.selectedSources) }
     var sourceColors by remember { mutableStateOf(settingsRepository.sourceColors) }
     var statusText by remember { mutableStateOf("") }
+    var emptySources by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showMapPicker by remember { mutableStateOf(false) }
     var isGenerating by remember { mutableStateOf(false) }
 
@@ -204,11 +211,15 @@ fun GpxGeneratorScreen(onNavigateToSettings: () -> Unit = {}) {
 
     fun generate() {
         val coords = coordinatesText.trim()
-        if (coords.isEmpty()) { statusText = "Please enter coordinates first."; return }
+        if (coords.isEmpty()) { statusText = "Please enter coordinates first."; emptySources = emptySet(); return }
         val sources = selectedSources.toList()
-        if (sources.isEmpty()) { statusText = "Select at least one source."; return }
+        if (sources.isEmpty()) { statusText = "Select at least one source."; emptySources = emptySet(); return }
         scope.launch {
-            withContext(Dispatchers.Main) { isGenerating = true; statusText = "Generating GPX\u2026" }
+            withContext(Dispatchers.Main) {
+                isGenerating = true
+                statusText = "Generating GPX\u2026"
+                emptySources = emptySet()
+            }
             try {
                 val centerCoordinates = Coordinates.fromString(coords)
                 val allPoints = mutableListOf<PointData>()
@@ -227,6 +238,7 @@ fun GpxGeneratorScreen(onNavigateToSettings: () -> Unit = {}) {
                     }
                 }
                 val results = deferreds.map { it.await() }
+                val emptyResultIds = results.filter { it.second.isEmpty() }.map { it.first }.toSet()
                 results.forEach { (id, pts, _) ->
                     val color = sourceColors[id]
                     allPoints.addAll(pts.map { it.copy(color = color) })
@@ -237,6 +249,7 @@ fun GpxGeneratorScreen(onNavigateToSettings: () -> Unit = {}) {
                         val stats = results.joinToString(", ") { (id, pts, _) -> "$id: ${pts.size}" }
                         val errStr = if (errors.isNotEmpty()) "\nErrors: ${errors.joinToString("; ")}" else ""
                         statusText = "No points found. GPX was not generated. $stats$errStr"
+                        emptySources = emptyResultIds
                         isGenerating = false
                     }
                     return@launch
@@ -259,11 +272,16 @@ fun GpxGeneratorScreen(onNavigateToSettings: () -> Unit = {}) {
                     val stats = results.joinToString(", ") { (id, pts, _) -> "$id: ${pts.size}" }
                     val errStr = if (errors.isNotEmpty()) "\nErrors: ${errors.joinToString("; ")}" else ""
                     statusText = "Done! $stats (total: ${allPoints.size} points)$errStr"
+                    emptySources = emptyResultIds
                     isGenerating = false
                     context.startActivity(Intent.createChooser(intent, "Open GPX"))
                 }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) { isGenerating = false; statusText = "Error: ${e.message}" }
+                withContext(Dispatchers.Main) {
+                    isGenerating = false
+                    statusText = "Error: ${e.message}"
+                    emptySources = emptySet()
+                }
             }
         }
     }
@@ -309,8 +327,34 @@ fun GpxGeneratorScreen(onNavigateToSettings: () -> Unit = {}) {
                     onColorChange = { id, color -> sourceColors = sourceColors + (id to color) }
                 )
                 if (statusText.isNotEmpty()) {
+                    val linkColor = MaterialTheme.colorScheme.primary
+                    val statusAnnotated = remember(statusText, emptySources, availableSources, linkColor) {
+                        buildAnnotatedString {
+                            append(statusText)
+                            if (emptySources.isNotEmpty()) {
+                                append('\n')
+                                withLink(
+                                    LinkAnnotation.Clickable(
+                                        tag = "select-empty-sources",
+                                        styles = TextLinkStyles(
+                                            style = SpanStyle(
+                                                color = linkColor,
+                                                fontWeight = FontWeight.Medium,
+                                                textDecoration = TextDecoration.Underline,
+                                            )
+                                        ),
+                                        linkInteractionListener = {
+                                            selectedSources = emptySources.intersect(availableSources)
+                                        },
+                                    )
+                                ) {
+                                    append("Выбрать пустые категории")
+                                }
+                            }
+                        }
+                    }
                     Text(
-                        text = statusText,
+                        text = statusAnnotated,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
