@@ -16,6 +16,8 @@ class INaturalistGpxGenerator(private val username: String, private val context:
 
     private val wikidataWikipediaService = WikidataWikipediaService()
 
+    private var trackDescription: String? = null
+
     private data class Observation(
         val taxonId: Int,
         val commonName: String,
@@ -28,7 +30,29 @@ class INaturalistGpxGenerator(private val username: String, private val context:
         val timeObservedAt: String?
     )
 
+    private data class TimeInterval(
+        val labelRes: Int,
+        val startHour: Int,
+        val endHour: Int
+    )
+
+    private data class TimeDescription(
+        val summary: String,
+        val timeIntervals: String
+    )
+
+    private val timeIntervals = listOf(
+        TimeInterval(R.string.inat_time_early_morning, 4, 7),
+        TimeInterval(R.string.inat_time_morning, 8, 10),
+        TimeInterval(R.string.inat_time_midday, 11, 13),
+        TimeInterval(R.string.inat_time_afternoon, 14, 16),
+        TimeInterval(R.string.inat_time_evening, 17, 19),
+        TimeInterval(R.string.inat_time_late_evening, 20, 23),
+        TimeInterval(R.string.inat_time_night, 0, 3)
+    )
+
     override fun getData(coordinates: Coordinates, radiusMeters: Int): List<PointData> {
+        trackDescription = null
         val userId = resolveUserId(username)
         val today = LocalDate.now()
         val months = getMonthsInWindow(today, 15)
@@ -59,6 +83,7 @@ class INaturalistGpxGenerator(private val username: String, private val context:
         }
         val scientificName = topObservations.first().scientificName
         val timeDesc = buildTimeDescription(topObservations)
+        trackDescription = timeDesc.timeIntervals.ifBlank { null }
         val wikipediaLinks = wikidataWikipediaService.getFormattedWikipediaLinksForScientificName(
             scientificName,
             coordinates
@@ -71,13 +96,15 @@ class INaturalistGpxGenerator(private val username: String, private val context:
                 description = buildDescription(
                     observedOn = obs.observedOn,
                     observationId = obs.id,
-                    timeDescription = timeDesc,
+                    timeDescription = timeDesc.summary,
                     timeLabel = context.getString(R.string.inat_time_label),
                     wikipediaLinks = wikipediaLinks
                 )
             )
         }
     }
+
+    override fun getTrackDescription(): String? = trackDescription
 
 
     private fun getObservationHour(timeObservedAt: String?): Int? {
@@ -89,30 +116,39 @@ class INaturalistGpxGenerator(private val username: String, private val context:
         }
     }
 
-    private fun getTimeIntervalName(hour: Int): String = when (hour) {
-        in 4..7   -> context.getString(R.string.inat_time_early_morning)
-        in 8..10  -> context.getString(R.string.inat_time_morning)
-        in 11..13 -> context.getString(R.string.inat_time_midday)
-        in 14..16 -> context.getString(R.string.inat_time_afternoon)
-        in 17..19 -> context.getString(R.string.inat_time_evening)
-        in 20..23 -> context.getString(R.string.inat_time_late_evening)
-        else      -> context.getString(R.string.inat_time_night) // 0..3
-    }
+    private fun getTimeInterval(hour: Int): TimeInterval =
+        timeIntervals.first { hour in it.startHour..it.endHour }
 
-    private fun buildTimeDescription(observations: List<Observation>): String {
-        val counts = mutableMapOf<String, Int>()
+    private fun getTimeIntervalLabel(interval: TimeInterval): String =
+        context.getString(interval.labelRes)
+
+    private fun formatTimeRange(interval: TimeInterval): String =
+        "${interval.startHour}:00-${interval.endHour}:59"
+
+    private fun buildTimeDescription(observations: List<Observation>): TimeDescription {
+        val counts = mutableMapOf<TimeInterval, Int>()
         for (obs in observations) {
             val hour = getObservationHour(obs.timeObservedAt) ?: continue
-            val interval = getTimeIntervalName(hour)
+            val interval = getTimeInterval(hour)
             counts[interval] = (counts[interval] ?: 0) + 1
         }
         val total = counts.values.sum()
-        if (total == 0) return context.getString(R.string.inat_time_all_day)
+        if (total == 0) return TimeDescription(context.getString(R.string.inat_time_all_day), "")
         val significant = counts.filter { it.value.toDouble() / total > 0.20 }
-        if (significant.isEmpty()) return context.getString(R.string.inat_time_all_day)
-        return significant.entries
+        if (significant.isEmpty()) return TimeDescription(context.getString(R.string.inat_time_all_day), "")
+
+        val summary = significant.entries
             .sortedByDescending { it.value }
-            .joinToString(", ") { "${it.key} (${it.value})" }
+            .joinToString(", ") { "${getTimeIntervalLabel(it.key)} (${it.value})" }
+
+        val intervalsLine = timeIntervals
+            .filter { it in significant }
+            .joinToString(", ") { "${getTimeIntervalLabel(it)} ${formatTimeRange(it)}" }
+
+        return TimeDescription(
+            summary = summary,
+            timeIntervals = "${context.getString(R.string.inat_time_intervals_label)} $intervalsLine"
+        )
     }
 
     private fun resolveUserId(login: String): Int {

@@ -28,6 +28,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Different applicationId + name, so the debug build can be installed
+            // next to the release build on the same device.
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(

@@ -2,6 +2,7 @@
     <string name="app_name">Stuff around</string>
     <string name="inat_time_label">Observation time:</string>
     <string name="inat_time_all_day">all day</string>
+    <string name="inat_time_intervals_label">Time intervals:</string>
     <string name="inat_time_early_morning">Early morning</string>
     <string name="inat_time_morning">Morning</string>
     <string name="inat_time_midday">Midday</string>

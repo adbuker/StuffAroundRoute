@@ -32,7 +32,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,6 +50,7 @@ import androidx.core.content.FileProvider
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.googleAttractionsGpx.R
 import com.example.googleAttractionsGpx.data.repository.*
 import com.example.googleAttractionsGpx.domain.models.Coordinates
 import com.example.googleAttractionsGpx.domain.models.PointData
@@ -153,6 +161,7 @@ fun GpxGeneratorScreen(onNavigateToSettings: () -> Unit = {}, onNavigateToCorrid
     var selectedSources by remember { mutableStateOf(settingsRepository.selectedSources) }
     var sourceColors by remember { mutableStateOf(settingsRepository.sourceColors) }
     var statusText by remember { mutableStateOf("") }
+    var emptySources by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showMapPicker by remember { mutableStateOf(false) }
     var isGenerating by remember { mutableStateOf(false) }
 
@@ -208,11 +217,15 @@ fun GpxGeneratorScreen(onNavigateToSettings: () -> Unit = {}, onNavigateToCorrid
 
     fun generate() {
         val coords = coordinatesText.trim()
-        if (coords.isEmpty()) { statusText = "Please enter coordinates first."; return }
+        if (coords.isEmpty()) { statusText = "Please enter coordinates first."; emptySources = emptySet(); return }
         val sources = selectedSources.toList()
-        if (sources.isEmpty()) { statusText = "Select at least one source."; return }
+        if (sources.isEmpty()) { statusText = "Select at least one source."; emptySources = emptySet(); return }
         scope.launch {
-            withContext(Dispatchers.Main) { isGenerating = true; statusText = "Generating GPX\u2026" }
+            withContext(Dispatchers.Main) {
+                isGenerating = true
+                statusText = "Generating GPX\u2026"
+                emptySources = emptySet()
+            }
             try {
                 val centerCoordinates = Coordinates.fromString(coords)
                 val allPoints = mutableListOf<PointData>()
@@ -220,52 +233,61 @@ fun GpxGeneratorScreen(onNavigateToSettings: () -> Unit = {}, onNavigateToCorrid
                 val deferreds = sources.map { id ->
                     async(Dispatchers.IO) {
                         val gen = buildGenerator(id, settingsRepository)
-                        if (gen == null) Pair(id, emptyList<PointData>())
+                        if (gen == null) Triple(id, emptyList<PointData>(), null)
                         else try {
-                            Pair(id, gen.getData(centerCoordinates))
+                            val points = gen.getData(centerCoordinates)
+                            Triple(id, points, gen.getTrackDescription())
                         } catch (e: Exception) {
                             synchronized(errors) { errors.add("$id: ${e.message}") }
-                            Pair(id, emptyList<PointData>())
+                            Triple(id, emptyList<PointData>(), null)
                         }
                     }
                 }
                 val results = deferreds.map { it.await() }
-                results.forEach { (id, pts) ->
+                val emptyResultIds = results.filter { it.second.isEmpty() }.map { it.first }.toSet()
+                results.forEach { (id, pts, _) ->
                     val color = sourceColors[id]
                     allPoints.addAll(pts.map { it.copy(color = color) })
                 }
 
                 if (allPoints.isEmpty()) {
                     withContext(Dispatchers.Main) {
-                        val stats = results.joinToString(", ") { (id, pts) -> "$id: ${pts.size}" }
+                        val stats = results.joinToString(", ") { (id, pts, _) -> "$id: ${pts.size}" }
                         val errStr = if (errors.isNotEmpty()) "\nErrors: ${errors.joinToString("; ")}" else ""
                         statusText = "No points found. GPX was not generated. $stats$errStr"
+                        emptySources = emptyResultIds
                         isGenerating = false
                     }
                     return@launch
                 }
 
-                val gpxString = buildGpxContent(allPoints)
+                val trackDescription = results.mapNotNull { it.third }.joinToString("\n\n")
+                val gpxString = buildGpxContent(allPoints, trackDescription.ifBlank { null })
                 val fileName = withContext(Dispatchers.IO) { getFileName(coords, sources.joinToString("-")) }
                 val file = File(context.getExternalFilesDir(null), fileName)
                 withContext(Dispatchers.IO) { file.writeText(gpxString, Charset.defaultCharset()) }
 
                 val uri: Uri = FileProvider.getUriForFile(
-                    context, "com.example.googleAttractionsGpx.fileProvider", file
+                    context, "${context.packageName}.fileProvider", file
                 )
                 val intent = Intent(Intent.ACTION_VIEW).apply {
                     setDataAndType(uri, "application/octet-stream")
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
                 withContext(Dispatchers.Main) {
-                    val stats = results.joinToString(", ") { (id, pts) -> "$id: ${pts.size}" }
+                    val stats = results.joinToString(", ") { (id, pts, _) -> "$id: ${pts.size}" }
                     val errStr = if (errors.isNotEmpty()) "\nErrors: ${errors.joinToString("; ")}" else ""
                     statusText = "Done! $stats (total: ${allPoints.size} points)$errStr"
+                    emptySources = emptyResultIds
                     isGenerating = false
                     context.startActivity(Intent.createChooser(intent, "Open GPX"))
                 }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) { isGenerating = false; statusText = "Error: ${e.message}" }
+                withContext(Dispatchers.Main) {
+                    isGenerating = false
+                    statusText = "Error: ${e.message}"
+                    emptySources = emptySet()
+                }
             }
         }
     }
@@ -275,7 +297,7 @@ fun GpxGeneratorScreen(onNavigateToSettings: () -> Unit = {}, onNavigateToCorrid
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Stuff around") },
+                title = { Text(stringResource(R.string.app_name)) },
                 actions = {
                     IconButton(onClick = onNavigateToCorridor) {
                         Icon(
@@ -319,8 +341,34 @@ fun GpxGeneratorScreen(onNavigateToSettings: () -> Unit = {}, onNavigateToCorrid
                     onColorChange = { id, color -> sourceColors = sourceColors + (id to color) }
                 )
                 if (statusText.isNotEmpty()) {
+                    val linkColor = MaterialTheme.colorScheme.primary
+                    val statusAnnotated = remember(statusText, emptySources, availableSources, linkColor) {
+                        buildAnnotatedString {
+                            append(statusText)
+                            if (emptySources.isNotEmpty()) {
+                                append('\n')
+                                withLink(
+                                    LinkAnnotation.Clickable(
+                                        tag = "select-empty-sources",
+                                        styles = TextLinkStyles(
+                                            style = SpanStyle(
+                                                color = linkColor,
+                                                fontWeight = FontWeight.Medium,
+                                                textDecoration = TextDecoration.Underline,
+                                            )
+                                        ),
+                                        linkInteractionListener = {
+                                            selectedSources = emptySources.intersect(availableSources)
+                                        },
+                                    )
+                                ) {
+                                    append("Выбрать пустые категории")
+                                }
+                            }
+                        }
+                    }
                     Text(
-                        text = statusText,
+                        text = statusAnnotated,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)

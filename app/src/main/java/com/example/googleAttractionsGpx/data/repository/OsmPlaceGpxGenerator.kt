@@ -3,6 +3,8 @@ package com.example.googleAttractionsGpx.data.repository
 import com.example.googleAttractionsGpx.domain.models.Coordinates
 import com.example.googleAttractionsGpx.domain.models.PointData
 import org.json.JSONObject
+import java.io.IOException
+import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
@@ -90,11 +92,36 @@ class OsmPlaceGpxGenerator : GpxGeneratorBase() {
             out center;
         """.trimIndent()
 
-        val url = URL("https://overpass-api.de/api/interpreter")
+        val url = URL(OVERPASS_ENDPOINT)
+
+        // Overpass is frequently overloaded and answers with 429/504; retry those requests
+        var lastError: Exception? = null
+        for (attempt in 0 until MAX_ATTEMPTS) {
+            try {
+                return executeOverpassQuery(url, query)
+            } catch (e: Exception) {
+                lastError = e
+                if (attempt == MAX_ATTEMPTS - 1 || !isRetryable(e)) throw e
+                e.printStackTrace()
+                Thread.sleep(RETRY_DELAY_MS)
+            }
+        }
+        throw lastError ?: IllegalStateException("Overpass API request failed")
+    }
+
+    private fun executeOverpassQuery(url: URL, query: String): List<OsmPlace> {
         // Do a POST request with the query in the request body
-        val connection = url.openConnection()
+        val connection = url.openConnection() as HttpURLConnection
+        connection.requestMethod = "POST"
         connection.doOutput = true
+        // Overpass rejects requests with default client User-Agents (e.g. Android's "Dalvik/...")
+        // with HTTP 406, so an identifiable app User-Agent is required.
+        connection.setRequestProperty("User-Agent", USER_AGENT)
+        connection.setRequestProperty("Accept", "application/json")
         connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+        connection.connectTimeout = CONNECT_TIMEOUT_MS
+        // Overpass queries can take up to a minute under load
+        connection.readTimeout = READ_TIMEOUT_MS
         connection.connect()
 
         connection.getOutputStream().use { output ->
@@ -103,10 +130,26 @@ class OsmPlaceGpxGenerator : GpxGeneratorBase() {
             output.write(postData.toByteArray(Charsets.UTF_8))
         }
 
-        val response = connection.getInputStream().use { it.readBytes().toString(Charsets.UTF_8) }
+        val responseCode = connection.responseCode
+        val response = (if (responseCode == HttpURLConnection.HTTP_OK) connection.inputStream else connection.errorStream)
+            ?.use { it.readBytes().toString(Charsets.UTF_8) }
+            .orEmpty()
+
+        if (responseCode != HttpURLConnection.HTTP_OK) {
+            throw OverpassHttpException(responseCode)
+        }
 
         return parseOverpassJson(response)
     }
+
+    /** Overpass returns 429/5xx when it is too busy; such requests are worth retrying. */
+    private fun isRetryable(e: Exception): Boolean = when (e) {
+        is OverpassHttpException -> e.responseCode == 429 || e.responseCode in 500..599
+        else -> e is IOException
+    }
+
+    private class OverpassHttpException(val responseCode: Int) :
+        IOException("Overpass API returned HTTP $responseCode")
 
     /** Parse the JSON response from Overpass to a list of OsmPlace */
     private fun parseOverpassJson(jsonResponse: String): List<OsmPlace> {
@@ -191,4 +234,13 @@ class OsmPlaceGpxGenerator : GpxGeneratorBase() {
         val lon: Double,
         val description: String
     )
+
+    private companion object {
+        const val OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter"
+        const val USER_AGENT = "GoogleAttractionsGpx/1.0 (OSM Overpass)"
+        const val CONNECT_TIMEOUT_MS = 15_000
+        const val READ_TIMEOUT_MS = 120_000
+        const val MAX_ATTEMPTS = 3
+        const val RETRY_DELAY_MS = 15_000L
+    }
 }

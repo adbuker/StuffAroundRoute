@@ -3,11 +3,17 @@ package com.example.googleAttractionsGpx.data.repository
 import com.example.googleAttractionsGpx.domain.models.PointData
 import com.example.googleAttractionsGpx.domain.repository.IGpxGenerator
 
-fun buildGpxContent(pointDataList: List<PointData>): String {
+fun buildGpxContent(pointDataList: List<PointData>, trackDescription: String? = null): String {
     val sb = StringBuilder()
     sb.append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""").append("\n")
     sb.append("""<gpx version="1.1" creator="GooglePlaceGpxGenerator" xmlns="http://www.topografix.com/GPX/1/1" xmlns:osmand="https://osmand.net/docs/technical/osmand-file-formats/osmand-gpx">""")
         .append("\n")
+    if (!trackDescription.isNullOrBlank()) {
+        val escapedTrackDescription = trackDescription.replace("&", "&amp;")
+        sb.append("""  <metadata>""").append("\n")
+        sb.append("""    <desc>$escapedTrackDescription</desc>""").append("\n")
+        sb.append("""  </metadata>""").append("\n")
+    }
     pointDataList.forEach { point ->
         sb.append("""  <wpt lat="${point.coordinates.latitude}" lon="${point.coordinates.longitude}">""").append("\n")
         val escapedName = point.name.replace("&", "&amp;")

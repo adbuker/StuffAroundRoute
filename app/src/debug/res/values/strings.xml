@@ -1,0 +1,4 @@
+<resources>
+    <!-- Debug builds override the app name so they are recognizable in the launcher. -->
+    <string name="app_name">Debug Stuff around</string>
+</resources>
